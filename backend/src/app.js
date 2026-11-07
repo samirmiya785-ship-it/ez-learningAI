@@ -9,16 +9,7 @@ import cors from "cors";
 const app = express();
 app.use(
   cors({
-    origin(origin, callback) {
-      const allowedOrigins = [
-        "http://localhost:5173",
-        ...(process.env.FRONTEND_URL || "")
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean),
-      ];
-      callback(null, !origin || allowedOrigins.includes(origin));
-    },
+    origin: ["https://ez-learningai.vercel.app", "http://localhost:5173"],
     credentials: true,
   }),
 );
