@@ -9,7 +9,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const production = process.argv.includes("--production") || process.env.NODE_ENV === "production";
 Object.assign(process.env, loadEnv(production ? "production" : "development", root, ""));
 const port = Number(process.env.FRONTEND_PORT) || 5173;
-const apiServer = new URL(process.env.API_SERVER || "http://localhost:3000");
+const apiServer = new URL(process.env.VITE_BACKEND_URL || process.env.API_SERVER || "http://localhost:5000");
 const redirects = new Map([
   ["/home", "/"],
   ["/privacy-policy", "/privacy"],

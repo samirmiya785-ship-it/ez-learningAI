@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import axios from "axios";
+import api from "../api.js";
 import ReactMarkdown from "react-markdown";
 import { Link } from "react-router-dom";
 import logo from "../assets/logo.png.png";
@@ -47,11 +47,10 @@ function objectId() {
 async function request(path, options = {}, token) {
   const activeToken = token ? storage.get("ez:auth", null)?.accessToken || token : token;
   const send = (currentToken) =>
-    axios({
+    api({
       url: path,
       method: options.method || "GET",
       data: options.body,
-      withCredentials: true,
       headers: {
         ...(options.body instanceof FormData ? {} : options.body ? { "Content-Type": "application/json" } : {}),
         ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
@@ -64,7 +63,7 @@ async function request(path, options = {}, token) {
   } catch (error) {
     if (error.response?.status === 401 && activeToken && !path.includes("/refreshToken")) {
       try {
-        const { data } = await axios.get("/api/auth/refreshToken", { withCredentials: true });
+        const { data } = await api.get("/api/auth/refreshToken");
         storage.set("ez:auth", { ...storage.get("ez:auth", {}), accessToken: data.accessToken });
         return (await send(data.accessToken)).data;
       } catch (refreshError) {

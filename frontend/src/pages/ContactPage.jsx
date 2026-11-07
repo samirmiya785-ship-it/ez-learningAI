@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import api from "../api.js";
 import { Link } from "react-router-dom";
 
 export default function ContactPage() {
@@ -12,7 +12,7 @@ export default function ContactPage() {
     setStatus("");
     const form = new FormData(formElement);
     try {
-      await axios.post("/api/contact", { name: form.get("name"), email: form.get("email"), message: form.get("message") }, { withCredentials: true });
+      await api.post("/api/contact", { name: form.get("name"), email: form.get("email"), message: form.get("message") });
       formElement.reset();
       setStatus("Your message has been sent. Thanks for getting in touch.");
     } catch (error) {

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node server.mjs",
     "build": "vite build --outDir dist/client && vite build --ssr src/entry-server.jsx --outDir dist/server",
+    "build:vercel": "vite build --mode vercel --outDir dist/vercel",
     "start": "node server.mjs --production",
     "lint": "oxlint",
     "preview": "node server.mjs --production"

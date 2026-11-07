@@ -99,7 +99,8 @@ Create a `.env` file in the project root. Do not commit real secrets.
 
 | Variable                | Purpose                                                                                                                |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                  | HTTP port. Defaults to `3000` when unset or not a number.                                                              |
+| `PORT`                  | HTTP port. Defaults to `5000` when unset or not a number.                                                              |
+| `FRONTEND_URL`          | Comma-separated allowed browser origins for CORS, including the deployed Vercel origin.                               |
 | `MONGO_URI`             | MongoDB connection string.                                                                                             |
 | `JWT_SECRET`            | Secret used to sign and verify access and refresh JWTs.                                                                |
 | `GOOGLE_API_KEY`        | Google AI API key used by text generation and embedding code.                                                          |
@@ -111,7 +112,8 @@ Create a `.env` file in the project root. Do not commit real secrets.
 Example with placeholders:
 
 ```dotenv
-PORT=3000
+PORT=5000
+FRONTEND_URL=http://localhost:5173
 MONGO_URI=mongodb+srv://<user>:<password>@<cluster>/<database>
 JWT_SECRET=<long-random-secret>
 GOOGLE_API_KEY=<google-ai-api-key>
@@ -132,7 +134,7 @@ The server connects to MongoDB before it begins listening. The `dev` script runs
 
 ### Frontend
 
-Run the backend on port `3000`, then start the React SSR server:
+Run the backend on port `5000`, then start the React SSR server:
 
 ```bash
 cd frontend
@@ -140,7 +142,11 @@ npm install
 npm run dev
 ```
 
-The frontend listens on port `5173` and proxies `/api` requests to `API_SERVER` (defaults to `http://localhost:3000`). For production, run `npm run build` followed by `npm run start`. Configure `SITE_URL` to the canonical public origin and `API_SERVER` to the backend origin in the frontend environment. The SSR server renders route metadata, `robots.txt`, and `sitemap.xml`, and issues permanent redirects from `/home`, `/privacy-policy`, and `/contact-us`.
+The frontend listens on port `5173`. Set `VITE_BACKEND_URL` in `frontend/.env.local` to override the local API origin; otherwise development API calls use `http://localhost:5000`. For self-hosted production, run `npm run build` followed by `npm run start`. Configure `SITE_URL` to the canonical public origin and `API_SERVER` (or `VITE_BACKEND_URL`) to the backend origin in the frontend environment. The SSR server renders route metadata, `robots.txt`, and `sitemap.xml`, and issues permanent redirects from `/home`, `/privacy-policy`, and `/contact-us`.
+
+#### Deploying the frontend to Vercel
+
+Create a Vercel project for this repository and set its **Root Directory** to `frontend`. The included `vercel.json` runs `npm run build:vercel`, publishes `dist/vercel`, proxies `/api/*` requests to the Render backend, and rewrites other paths to the SPA entry point so React Router routes load on refresh. Leave `VITE_BACKEND_URL` unset in Vercel so browser API calls remain on the Vercel origin and use that proxy; this also keeps refresh-token cookies same-origin. Set the backend's `FRONTEND_URL` to your Vercel origin (and any preview origin you need). The Vercel build is client-rendered; the custom Node SSR server and its route-specific server-rendered metadata, `robots.txt`, and redirects are not used in this deployment.
 
 The contact form sends email through Resend to `zynix011@gmail.com`; set both `RESEND_API_KEY` and a verified `RESEND_FROM_EMAIL` in the backend environment to enable delivery. Without those values, the form returns an actionable configuration message and offers the direct email address.
 

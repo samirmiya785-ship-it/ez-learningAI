@@ -7,7 +7,21 @@ import chatRouter from "./routes/chat.route.js";
 import contactRouter from "./routes/contact.route.js";
 import cors from "cors";
 const app = express();
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+app.use(
+  cors({
+    origin(origin, callback) {
+      const allowedOrigins = [
+        "http://localhost:5173",
+        ...(process.env.FRONTEND_URL || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ];
+      callback(null, !origin || allowedOrigins.includes(origin));
+    },
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
