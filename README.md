@@ -2,6 +2,8 @@
 
 ez-LearningAI is a Node.js and Express backend for a textbook-aware learning assistant. It accepts PDF uploads, extracts and splits their text, creates Google Gemini embeddings, stores the resulting chunks in MongoDB, and answers student questions using vector search, recent chat history, and a Gemini text-generation model. It also provides account registration and session-based refresh-token authentication.
 
+This is my first RAG project, built to understand the RAG concept and create some stuff using LLM.
+
 This guide describes the application files currently in this project. It excludes `node_modules/` (installed third-party code), `uploads/` (user-provided files), `.env` (private configuration), and `package-lock.json` (generated dependency-resolution data).
 
 ## Contents
