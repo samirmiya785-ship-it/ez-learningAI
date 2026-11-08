@@ -83,6 +83,13 @@ export const handleQuery = async (req, res) => {
     });
   } catch (error) {
     console.error("Chat query failed:", error);
+    if (error?.status === 429 || error?.statusCode === 429) {
+      return res.status(429).json({
+        success: false,
+        message: "The Gemini API usage quota has been reached. Please try again after the quota resets or review your Google AI Studio usage limits and billing.",
+      });
+    }
+
     const responseBody = {
       success: false,
       message: "Unable to process chat query",
