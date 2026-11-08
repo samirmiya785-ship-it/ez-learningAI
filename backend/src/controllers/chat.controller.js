@@ -3,6 +3,24 @@ import { deleteChatHistory, getRecentHistory, saveMessages } from "../services/c
 import { buildRAGPrompt } from "../utilis/ragPrompt.js";
 import { GEMINI_MODEL, genAI } from "../config/config.js";
 import { searchSimilarChunks } from "../services/VectorSearch.service.js";
+import { buildRetrievalQuery, classifyQuestionDomain } from "../services/ragQuery.service.js";
+
+const NON_IT_RESPONSE = "IT ko kura sodha na hauu mw tesko lagi baneko hoo";
+const NO_CONTEXT_RESPONSE = "Sorry yrr maile ta kei ni payena.";
+const RAG_TOP_K = 5;
+
+async function saveAndReturnFallback(res, sessionId, query, answer) {
+  await saveMessages(sessionId, [
+    { role: "user", content: query },
+    { role: "assistant", content: answer },
+  ]);
+  return res.status(200).json({
+    success: true,
+    sessionId,
+    answer,
+    sources: [],
+  });
+}
 
 export const deleteChat = async (req, res) => {
   const { sessionId } = req.params;
@@ -38,13 +56,42 @@ export const handleQuery = async (req, res) => {
     const normalizedQuery = query.trim();
     const recentHistory = await getRecentHistory(sessionId, 6);
 
+    failureStage = "classifying the question domain";
+    const domain = await classifyQuestionDomain({
+      genAI,
+      model: GEMINI_MODEL,
+      userQuestion: normalizedQuery,
+      chatHistory: recentHistory,
+    });
+    if (domain === "non_it") {
+      return await saveAndReturnFallback(res, sessionId, normalizedQuery, NON_IT_RESPONSE);
+    }
+
+    failureStage = "preparing the retrieval query";
+    const retrievalQuery = await buildRetrievalQuery({
+      genAI,
+      model: GEMINI_MODEL,
+      userQuestion: normalizedQuery,
+      chatHistory: recentHistory,
+    });
+
     failureStage = "retrieving relevant PDF chunks";
-    const retrievedChunks = await searchSimilarChunks(normalizedQuery, 3);
+    const retrievedChunks = await searchSimilarChunks(retrievalQuery, RAG_TOP_K);
+    const usableChunks = retrievedChunks.filter(
+      (chunk) => typeof chunk?.textChunk === "string" && chunk.textChunk.trim(),
+    );
+    console.info("RAG retrieval completed", {
+      hitCount: usableChunks.length,
+      topScore: usableChunks[0]?.score ?? null,
+    });
+    if (usableChunks.length === 0) {
+      return await saveAndReturnFallback(res, sessionId, normalizedQuery, NO_CONTEXT_RESPONSE);
+    }
 
     failureStage = "building the AI prompt";
     const { systemInstructions, userPrompt } = buildRAGPrompt({
       userQuestion: normalizedQuery,
-      retrievedChunks,
+      retrievedChunks: usableChunks,
       chatHistory: recentHistory,
     });
 
@@ -72,7 +119,7 @@ export const handleQuery = async (req, res) => {
       success: true,
       sessionId,
       answer: aiAnswer,
-      sources: retrievedChunks.map(({ _id, bookId, subject, pageNumber, score }) => ({
+      sources: usableChunks.map(({ _id, bookId, subject, pageNumber, score }) => ({
         chunkId: _id,
         bookId,
         subject,

@@ -22,7 +22,7 @@ The application has three main request flows:
 
 1. **Account and sessions:** `server.js` starts Express after connecting to MongoDB. The authentication routes call the user controller, which creates users and manages login sessions and refresh tokens.
 2. **PDF ingestion:** a client sends a PDF to the upload route. The book controller extracts its text, splits it into overlapping chunks, embeds the chunks, then stores a book record and its chunks in MongoDB.
-3. **Textbook chat:** a client sends a session ID and question to the chat route. The chat controller loads recent messages, retrieves similar PDF chunks, builds a prompt, asks Gemini for an answer, saves both messages, and returns the answer and source metadata.
+3. **Textbook chat:** a client sends a session ID and question to the chat route. The chat controller loads recent messages, classifies the question domain, rewrites follow-ups into standalone retrieval queries, retrieves the five best matching PDF chunks for in-domain questions, and asks Gemini to answer from those excerpts. Out-of-domain questions and empty retrievals get server-controlled fallback responses. The controller saves both messages and returns the answer and source metadata.
 
 ```text
 server.js
@@ -34,6 +34,7 @@ server.js
        │                                      └─ book/chunk models
        └─ /api/chat ── chat.route.js ── chat.controller.js
                                               ├─ chatHistory.model.js ── chats model
+                                              ├─ ragQuery.service.js ── Gemini domain/query helpers
                                               ├─ VectorSearch.service.js ── chunk model
                                               ├─ utilis/embeddings.js
                                               ├─ utilis/ragPrompt.js
@@ -70,6 +71,7 @@ server.js
 │   │   ├── chatHistory.model.js
 │   │   ├── embedding.service.js
 │   │   ├── pdf.service.js
+│   │   ├── ragQuery.service.js
 │   │   ├── storage.service.js
 │   │   └── VectorSearch.service.js
 │   └── utilis/
@@ -216,7 +218,7 @@ Route modules map HTTP methods and paths to controller functions. They contain l
   - `logout` finds the session associated with the refresh token, marks it revoked, and clears the cookie.
   - `logoutAll` verifies the refresh token, revokes all active sessions for that user, and clears the cookie.
 - **`src/controllers/book.controller.js`** — Implements `uploadPDF`. It requires an uploaded file, extracts and splits PDF text, creates embeddings, verifies one embedding per chunk, creates the book record, saves the associated chunks, marks the book ready, and returns processing counts. Processing failures are logged and returned as HTTP 500 responses.
-- **`src/controllers/chat.controller.js`** — Implements `handleQuery`. It validates the session ID and question, loads recent chat history, retrieves similar chunks, builds the prompt, calls the configured Gemini text model, validates the answer, saves the user and assistant messages, and returns the answer and source metadata. On failure it logs the error; non-production responses include the failing stage and error message.
+- **`src/controllers/chat.controller.js`** — Implements `handleQuery`. It validates the session ID and question, loads recent chat history, classifies the current question before retrieval, returns exact server-controlled fallbacks for non-IT questions and empty retrievals, rewrites in-domain follow-ups for retrieval, retrieves five chunks, builds the prompt, and calls the configured Gemini text model. It saves the user and assistant messages and returns the answer and source metadata. On failure it logs the error; non-production responses include the failing stage and error message.
 
 ### Services and shared utilities
 
@@ -224,6 +226,7 @@ Route modules map HTTP methods and paths to controller functions. They contain l
   - `extractTextFromPDF(fileBuffer)` parses PDF data from a memory buffer, rejects empty extracted text, normalizes line endings and repeated blank lines, and returns trimmed text.
   - `splitPdfText(pdfText)` rejects empty input and splits text using a shared recursive text splitter configured for 1,000-character chunks with 200-character overlap.
 - **`src/services/embedding.service.js`** — `processEmbeddings(textArray)` validates that chunks were supplied and delegates embedding generation to `generateEmbeddings`.
+- **`src/services/ragQuery.service.js`** — Uses Gemini structured output to classify the current question as IT/CSIT or non-IT and to rewrite follow-up questions as standalone textbook retrieval queries. Conversation history is used only to resolve incomplete references.
 - **`src/utilis/embeddings.js`** — Creates a Google Generative AI embedding client using `gemini-embedding-001`. `generateEmbeddings(textChunks)` validates input, embeds each text concurrently, and returns an array of numeric vectors in input order.
 - **`src/services/VectorSearch.service.js`** — `searchSimilarChunks(text, topK, filter)` embeds a query and runs a MongoDB `$vectorSearch` aggregation against the `ez-learningAI` index on the `embedding` field. It returns the highest-ranked chunks with their metadata and similarity score. `topK` defaults to four; an optional filter is passed to Atlas Vector Search.
 - **`src/services/chatHistory.model.js`**
