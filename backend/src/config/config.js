@@ -1,5 +1,5 @@
 import "./loadEnv.js";
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from "@google/genai";
 
 const config = {
   MONGO_URI: process.env.MONGO_URI,
@@ -7,8 +7,6 @@ const config = {
   IMAGE_KIT_PRIVATE_KEY: process.env.IMAGE_KIT_PRIVATE_KEY,
   GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
 };
-const genAI = new GoogleGenerativeAI(config.GOOGLE_API_KEY);
-export const aimodel = genAI.getGenerativeModel({
-  model: 'gemini-3.6-flash'
-})
+export const genAI = new GoogleGenAI({ apiKey: config.GOOGLE_API_KEY });
+export const GEMINI_MODEL = "gemini-3.6-flash";
 export default config;

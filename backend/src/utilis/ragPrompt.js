@@ -1,27 +1,27 @@
 export const buildRAGPrompt = ({ userQuestion, retrievedChunks = [], chatHistory = [] } = {}) => {
   const chunks = Array.isArray(retrievedChunks) ? retrievedChunks : [];
   const history = Array.isArray(chatHistory) ? chatHistory : [];
-  const formattedText = chunks.length > 0
-    ? chunks.map((chunk, index) => {
-      const text = typeof chunk === "string"
-        ? chunk
-        : typeof chunk?.text === "string"
-          ? chunk.text
-          : typeof chunk?.textChunk === "string"
-            ? chunk.textChunk
-            : JSON.stringify(chunk) ?? String(chunk);
-      return `---Textbook Excerpt ${index + 1} ---\n${text}`;
-    }).join("\n\n")
-    : "No retrieved course-document context was found.";
-  const formattedHistory = history.length > 0
-    ? history.map((msg) => {
-      const content = typeof msg?.content === "string"
-        ? msg.content
-        : JSON.stringify(msg?.content) ?? String(msg?.content ?? "");
-      return `${msg?.role === "user" ? "Student" : "Assistant"}: ${content}`;
-    }).join("\n")
-    : "No previous conversation.";
-  const systemInstructions = `You are the strict domain-specific AI teaching assistant for an IT and B.Sc. CSIT course learning platform. Your sole purpose is to answer questions using only the retrieved context from uploaded course documents.
+  const formattedText =
+    chunks.length > 0
+      ? chunks
+          .map((chunk, index) => {
+            const text =
+              typeof chunk === "string" ? chunk : typeof chunk?.text === "string" ? chunk.text : typeof chunk?.textChunk === "string" ? chunk.textChunk : (JSON.stringify(chunk) ?? String(chunk));
+            return `---Textbook Excerpt ${index + 1} ---\n${text}`;
+          })
+          .join("\n\n")
+      : "No retrieved course-document context was found.";
+  const formattedHistory =
+    history.length > 0
+      ? history
+          .map((msg) => {
+            const content = typeof msg?.content === "string" ? msg.content : (JSON.stringify(msg?.content) ?? String(msg?.content ?? ""));
+            return `${msg?.role === "user" ? "Student" : "Assistant"}: ${content}`;
+          })
+          .join("\n")
+      : "No previous conversation.";
+  const systemInstructions =
+    `You are the strict domain-specific AI teaching assistant for an IT and B.Sc. CSIT course learning platform. Your sole purpose is to answer questions using only the retrieved context from uploaded course documents.
 
 Rules:
 1. Determine whether the student's current question is about IT/CSIT course material or an entirely unrelated, non-IT topic.

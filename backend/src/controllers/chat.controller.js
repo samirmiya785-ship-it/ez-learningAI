@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { deleteChatHistory, getRecentHistory, saveMessages } from "../services/chatHistory.model.js";
 import { buildRAGPrompt } from "../utilis/ragPrompt.js";
-import { aimodel } from "../config/config.js";
+import { GEMINI_MODEL, genAI } from "../config/config.js";
 import { searchSimilarChunks } from "../services/VectorSearch.service.js";
 
 export const deleteChat = async (req, res) => {
@@ -49,16 +49,15 @@ export const handleQuery = async (req, res) => {
     });
 
     failureStage = "generating the AI answer";
-    const response = await aimodel.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: userPrompt }],
-        },
-      ],
-      systemInstruction: systemInstructions,
+    const response = await genAI.models.generateContent({
+      model: GEMINI_MODEL,
+      contents: userPrompt,
+      config: {
+        systemInstruction: systemInstructions,
+        temperature: 0.0,
+      },
     });
-    const aiAnswer = response.response.text();
+    const aiAnswer = response.text;
     if (typeof aiAnswer !== "string" || !aiAnswer.trim()) {
       throw new Error("The AI model returned an empty answer");
     }
