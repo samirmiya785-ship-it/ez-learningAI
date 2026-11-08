@@ -50,6 +50,13 @@ function formatHistory(chatHistory) {
     .filter(Boolean);
 }
 
+function isFollowUpQuestion(question) {
+  return (
+    /\b(it|its|they|them|their|this|that|these|those|former|latter|above|previous)\b/i.test(question) ||
+    /^(and|also|what about|how about)\b/i.test(question)
+  );
+}
+
 export async function classifyQuestionDomain({ genAI, model, userQuestion, chatHistory }) {
   const history = formatHistory(chatHistory);
   const response = await genAI.models.generateContent({
@@ -75,7 +82,7 @@ export async function classifyQuestionDomain({ genAI, model, userQuestion, chatH
 
 export async function buildRetrievalQuery({ genAI, model, userQuestion, chatHistory }) {
   const history = formatHistory(chatHistory);
-  if (history.length === 0) {
+  if (history.length === 0 || !isFollowUpQuestion(userQuestion)) {
     return userQuestion;
   }
 

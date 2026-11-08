@@ -96,7 +96,7 @@ export const handleQuery = async (req, res) => {
     });
 
     failureStage = "generating the AI answer";
-    const response = await genAI.models.generateContent({
+    let response = await genAI.models.generateContent({
       model: GEMINI_MODEL,
       contents: userPrompt,
       config: {
@@ -104,9 +104,29 @@ export const handleQuery = async (req, res) => {
         temperature: 0.0,
       },
     });
-    const aiAnswer = response.text;
+    let aiAnswer = response.text?.trim();
     if (typeof aiAnswer !== "string" || !aiAnswer.trim()) {
       throw new Error("The AI model returned an empty answer");
+    }
+    if (aiAnswer.toLocaleLowerCase() === NO_CONTEXT_RESPONSE.toLocaleLowerCase()) {
+      console.warn("Gemini returned the no-context fallback despite retrieved excerpts; retrying with a partial-answer instruction", {
+        retrievedChunkCount: usableChunks.length,
+      });
+      response = await genAI.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: `${userPrompt}\n\nCorrection: retrieved textbook excerpts are present above. Do not return a no-information fallback. Give any answerable facts directly supported by those excerpts and identify only the specific details they do not contain.`,
+        config: {
+          systemInstruction: `${systemInstructions}\n\nThe controller has confirmed that non-empty textbook excerpts are present. You must not return a generic no-context fallback; answer supported portions and identify unsupported details.`,
+          temperature: 0.0,
+        },
+      });
+      aiAnswer = response.text?.trim();
+      if (typeof aiAnswer !== "string" || !aiAnswer.trim()) {
+        throw new Error("The AI model returned an empty answer after the grounded-answer retry");
+      }
+      if (aiAnswer.toLocaleLowerCase() === NO_CONTEXT_RESPONSE.toLocaleLowerCase()) {
+        throw new Error("The AI model refused to answer despite non-empty retrieved textbook excerpts");
+      }
     }
 
     failureStage = "saving the conversation";
