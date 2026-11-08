@@ -290,6 +290,7 @@ function ChatMessage({ message }) {
           <div className="mt-3 flex flex-wrap gap-1.5">
             {message.sources.map((source, index) => (
               <span key={source.chunkId || `${source.subject}-${index}`} className="rounded-lg border border-[var(--line)] px-2.5 py-1 text-[13px] text-[var(--mute)]">
+                {source.excerptNumber ? <span className="mr-1">[{source.excerptNumber}]</span> : null}
                 <b className="font-medium text-[var(--ink)]">{source.subject || source.title || "Course material"}</b>
                 {source.pageNumber ? ` · p. ${source.pageNumber}` : ""}
               </span>

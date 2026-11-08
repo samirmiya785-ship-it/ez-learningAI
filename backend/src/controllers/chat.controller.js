@@ -1,15 +1,27 @@
 import mongoose from "mongoose";
 import { deleteChatHistory, getRecentHistory, saveMessages } from "../services/chatHistory.model.js";
-import { buildRAGPrompt } from "../utilis/ragPrompt.js";
 import { GEMINI_MODEL, genAI } from "../config/config.js";
 import { searchSimilarChunks } from "../services/VectorSearch.service.js";
 import { buildRetrievalQuery, classifyQuestionDomain } from "../services/ragQuery.service.js";
+import { generateGroundedAnswer } from "../services/groundedAnswer.service.js";
 
 const NON_IT_RESPONSE = "IT ko kura sodha na hauu mw tesko lagi baneko hoo";
 const NO_CONTEXT_RESPONSE = "Sorry yrr maile ta kei ni payena.";
+const UNVERIFIED_RESPONSE = "I found course excerpts, but could not verify an answer from them. Try rephrasing your question or check the listed sources.";
 const RAG_TOP_K = 5;
 
-async function saveAndReturnFallback(res, sessionId, query, answer) {
+function formatSources(chunks, excerptNumbers = chunks.map((_, index) => index + 1)) {
+  return chunks.map(({ _id, bookId, subject, pageNumber, score }, index) => ({
+    chunkId: _id,
+    bookId,
+    subject,
+    pageNumber,
+    score,
+    excerptNumber: excerptNumbers[index],
+  }));
+}
+
+async function saveAndReturnFallback(res, sessionId, query, answer, sources = []) {
   await saveMessages(sessionId, [
     { role: "user", content: query },
     { role: "assistant", content: answer },
@@ -18,7 +30,7 @@ async function saveAndReturnFallback(res, sessionId, query, answer) {
     success: true,
     sessionId,
     answer,
-    sources: [],
+    sources,
   });
 }
 
@@ -76,57 +88,51 @@ export const handleQuery = async (req, res) => {
     });
 
     failureStage = "retrieving relevant PDF chunks";
-    const retrievedChunks = await searchSimilarChunks(retrievalQuery, RAG_TOP_K);
+    const retrievalQueries = [...new Set([normalizedQuery, retrievalQuery])];
+    const retrievalResults = await Promise.all(
+      retrievalQueries.map((searchQuery) => searchSimilarChunks(searchQuery, RAG_TOP_K)),
+    );
+    const chunksById = new Map();
+    for (const chunk of retrievalResults.flat()) {
+      const key = String(chunk._id);
+      const existing = chunksById.get(key);
+      if (!existing || (chunk.score ?? 0) > (existing.score ?? 0)) {
+        chunksById.set(key, chunk);
+      }
+    }
+    const retrievedChunks = [...chunksById.values()]
+      .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
+      .slice(0, RAG_TOP_K);
     const usableChunks = retrievedChunks.filter(
       (chunk) => typeof chunk?.textChunk === "string" && chunk.textChunk.trim(),
     );
     console.info("RAG retrieval completed", {
       hitCount: usableChunks.length,
       topScore: usableChunks[0]?.score ?? null,
+      retrievalQueryCount: retrievalQueries.length,
     });
     if (usableChunks.length === 0) {
       return await saveAndReturnFallback(res, sessionId, normalizedQuery, NO_CONTEXT_RESPONSE);
     }
 
-    failureStage = "building the AI prompt";
-    const { systemInstructions, userPrompt } = buildRAGPrompt({
+    failureStage = "generating and verifying a grounded answer";
+    const { answer: aiAnswer, excerptIndexes } = await generateGroundedAnswer({
+      genAI,
+      model: GEMINI_MODEL,
       userQuestion: normalizedQuery,
       retrievedChunks: usableChunks,
-      chatHistory: recentHistory,
     });
-
-    failureStage = "generating the AI answer";
-    let response = await genAI.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: userPrompt,
-      config: {
-        systemInstruction: systemInstructions,
-        temperature: 0.0,
-      },
-    });
-    let aiAnswer = response.text?.trim();
-    if (typeof aiAnswer !== "string" || !aiAnswer.trim()) {
-      throw new Error("The AI model returned an empty answer");
-    }
-    if (aiAnswer.toLocaleLowerCase() === NO_CONTEXT_RESPONSE.toLocaleLowerCase()) {
-      console.warn("Gemini returned the no-context fallback despite retrieved excerpts; retrying with a partial-answer instruction", {
+    if (!aiAnswer) {
+      console.warn("No answer claims passed quote and entailment verification", {
         retrievedChunkCount: usableChunks.length,
       });
-      response = await genAI.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: `${userPrompt}\n\nCorrection: retrieved textbook excerpts are present above. Do not return a no-information fallback. Give any answerable facts directly supported by those excerpts and identify only the specific details they do not contain.`,
-        config: {
-          systemInstruction: `${systemInstructions}\n\nThe controller has confirmed that non-empty textbook excerpts are present. You must not return a generic no-context fallback; answer supported portions and identify unsupported details.`,
-          temperature: 0.0,
-        },
-      });
-      aiAnswer = response.text?.trim();
-      if (typeof aiAnswer !== "string" || !aiAnswer.trim()) {
-        throw new Error("The AI model returned an empty answer after the grounded-answer retry");
-      }
-      if (aiAnswer.toLocaleLowerCase() === NO_CONTEXT_RESPONSE.toLocaleLowerCase()) {
-        throw new Error("The AI model refused to answer despite non-empty retrieved textbook excerpts");
-      }
+      return await saveAndReturnFallback(
+        res,
+        sessionId,
+        normalizedQuery,
+        UNVERIFIED_RESPONSE,
+        formatSources(usableChunks),
+      );
     }
 
     failureStage = "saving the conversation";
@@ -139,13 +145,10 @@ export const handleQuery = async (req, res) => {
       success: true,
       sessionId,
       answer: aiAnswer,
-      sources: usableChunks.map(({ _id, bookId, subject, pageNumber, score }) => ({
-        chunkId: _id,
-        bookId,
-        subject,
-        pageNumber,
-        score,
-      })),
+      sources: formatSources(
+        excerptIndexes.map((index) => usableChunks[index]),
+        excerptIndexes.map((index) => index + 1),
+      ),
     });
   } catch (error) {
     console.error("Chat query failed:", error);

@@ -22,7 +22,7 @@ The application has three main request flows:
 
 1. **Account and sessions:** `server.js` starts Express after connecting to MongoDB. The authentication routes call the user controller, which creates users and manages login sessions and refresh tokens.
 2. **PDF ingestion:** a client sends a PDF to the upload route. The book controller extracts its text, splits it into overlapping chunks, embeds the chunks, then stores a book record and its chunks in MongoDB.
-3. **Textbook chat:** a client sends a session ID and question to the chat route. The chat controller loads recent messages, classifies the question domain, rewrites follow-ups into standalone retrieval queries, retrieves the five best matching PDF chunks for in-domain questions, and asks Gemini to answer from those excerpts. Out-of-domain questions and empty retrievals get server-controlled fallback responses. The controller saves both messages and returns the answer and source metadata.
+3. **Textbook chat:** a client sends a session ID and question to the chat route. The chat controller loads recent messages, classifies the question domain, rewrites follow-ups into standalone retrieval queries, searches both the original and rewritten question, and merges the five best matching PDF chunks. Gemini returns claims with verbatim excerpt quotes; the server checks each quote against the stored chunk and asks Gemini to verify entailment before returning supported claims with source citations. Out-of-domain questions, empty retrievals, and answers with no verified claims get server-controlled fallback responses.
 
 ```text
 server.js
@@ -35,9 +35,9 @@ server.js
        └─ /api/chat ── chat.route.js ── chat.controller.js
                                               ├─ chatHistory.model.js ── chats model
                                               ├─ ragQuery.service.js ── Gemini domain/query helpers
+                                              ├─ groundedAnswer.service.js ── cited, verified claims
                                               ├─ VectorSearch.service.js ── chunk model
                                               ├─ utilis/embeddings.js
-                                              ├─ utilis/ragPrompt.js
                                               └─ config/config.js ── Gemini text model
 ```
 
@@ -70,6 +70,7 @@ server.js
 │   ├── services/
 │   │   ├── chatHistory.model.js
 │   │   ├── embedding.service.js
+│   │   ├── groundedAnswer.service.js
 │   │   ├── pdf.service.js
 │   │   ├── ragQuery.service.js
 │   │   ├── storage.service.js
@@ -218,7 +219,7 @@ Route modules map HTTP methods and paths to controller functions. They contain l
   - `logout` finds the session associated with the refresh token, marks it revoked, and clears the cookie.
   - `logoutAll` verifies the refresh token, revokes all active sessions for that user, and clears the cookie.
 - **`src/controllers/book.controller.js`** — Implements `uploadPDF`. It requires an uploaded file, extracts and splits PDF text, creates embeddings, verifies one embedding per chunk, creates the book record, saves the associated chunks, marks the book ready, and returns processing counts. Processing failures are logged and returned as HTTP 500 responses.
-- **`src/controllers/chat.controller.js`** — Implements `handleQuery`. It validates the session ID and question, loads recent chat history, classifies the current question before retrieval, returns exact server-controlled fallbacks for non-IT questions and empty retrievals, rewrites in-domain follow-ups for retrieval, retrieves five chunks, builds the prompt, and calls the configured Gemini text model. It saves the user and assistant messages and returns the answer and source metadata. On failure it logs the error; non-production responses include the failing stage and error message.
+- **`src/controllers/chat.controller.js`** — Implements `handleQuery`. It validates the session ID and question, loads recent chat history, classifies the current question before retrieval, returns an exact server-controlled fallback for non-IT questions, searches both the original question and any rewritten follow-up query, merges the five highest-scoring unique chunks, and delegates to grounded answer generation. It saves the user and assistant messages and returns only source metadata for verified claims. On failure it logs the error; non-production responses include the failing stage and error message.
 
 ### Services and shared utilities
 
@@ -227,6 +228,7 @@ Route modules map HTTP methods and paths to controller functions. They contain l
   - `splitPdfText(pdfText)` rejects empty input and splits text using a shared recursive text splitter configured for 1,000-character chunks with 200-character overlap.
 - **`src/services/embedding.service.js`** — `processEmbeddings(textArray)` validates that chunks were supplied and delegates embedding generation to `generateEmbeddings`.
 - **`src/services/ragQuery.service.js`** — Uses Gemini structured output to classify the current question as IT/CSIT or non-IT and to rewrite follow-up questions as standalone textbook retrieval queries. Conversation history is used only to resolve incomplete references.
+- **`src/services/groundedAnswer.service.js`** — Generates atomic claims with exact quotes from numbered retrieved excerpts, rejects claims whose quotes are not verbatim in the cited chunk, and asks Gemini to verify each claim against its cited evidence before returning it.
 - **`src/utilis/embeddings.js`** — Creates a Google Generative AI embedding client using `gemini-embedding-001`. `generateEmbeddings(textChunks)` validates input, embeds each text concurrently, and returns an array of numeric vectors in input order.
 - **`src/services/VectorSearch.service.js`** — `searchSimilarChunks(text, topK, filter)` embeds a query and runs a MongoDB `$vectorSearch` aggregation against the `ez-learningAI` index on the `embedding` field. It returns the highest-ranked chunks with their metadata and similarity score. `topK` defaults to four; an optional filter is passed to Atlas Vector Search.
 - **`src/services/chatHistory.model.js`**
@@ -234,7 +236,6 @@ Route modules map HTTP methods and paths to controller functions. They contain l
   - `saveMessage(sessionId, role, content)` is a convenience wrapper that saves one message through `saveMessages`.
   - `getRecentHistory(sessionId, limit)` validates its arguments, fetches the session's chat record, and returns the last `limit` messages as role/content pairs. The default limit is ten; a session without saved messages returns an empty array.
 - **`src/services/storage.service.js`** — Creates an ImageKit client using `IMAGE_KIT_PRIVATE_KEY`. `uploadBook(files)` uploads the supplied files under the `Book-z/books` folder with a time-based filename and returns ImageKit's result. This helper is not currently called by the PDF upload controller.
-- **`src/utilis/ragPrompt.js`** — `buildRAGPrompt({ userQuestion, retrievedChunks, chatHistory })` formats retrieved excerpts and recent messages, creates system instructions for a concise BSc CSIT learning assistant, and returns `{ systemInstructions, userPrompt }`. Missing context or history is represented with a short fallback string.
 
 ### MongoDB models
 
