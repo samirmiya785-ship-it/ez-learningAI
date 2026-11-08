@@ -12,7 +12,6 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@google/genai": "^3.0.0",
     "@google/generative-ai": "^0.24.1",
     "@imagekit/nodejs": "^7.12.1",
     "@langchain/core": "^1.2.14",
