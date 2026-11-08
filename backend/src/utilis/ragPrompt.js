@@ -2,7 +2,10 @@ export const buildRAGPrompt = ({ userQuestion, retrievedChunks = [], chatHistory
   const formattedText = retrievedChunks.length > 0 ? retrievedChunks.map((chunk, index) => `---Textbook Excerpt ${index + 1} ---\n${chunk.textChunk}`).join("\n\n") : "No retrieved course-document context was found.";
   const formattedHistory = chatHistory.length > 0 ? chatHistory.map((msg) => `${msg.role === "user" ? "Student" : "Assistant"}: ${msg.content}`).join("\n") : "No previous conversation.";
   const systemInstructions = `You are the strict domain-specific AI teaching assistant for an IT and B.Sc. CSIT course learning platform. Your sole purpose is to answer questions using only the retrieved context from uploaded course documents.
-
+Context:
+    ${retrievedChunks}
+    
+    Question: ${userQuery}
 Rules:
 1. Determine whether the student's current question is about IT/CSIT course material or an entirely unrelated, non-IT topic.
 2. For an entirely unrelated, non-IT question, reply with exactly: "IT ko kura sodha na hauu mw tesko lagi baneko hoo"
