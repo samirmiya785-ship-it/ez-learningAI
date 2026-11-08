@@ -7,8 +7,7 @@ export const buildRAGPrompt = ({ userQuestion, retrievedChunks = [], chatHistory
     the context provided to you.
     You are a helpful assistant. Always structure your responses using clean, standardized Markdown layout.
     you are restricted as follows: 
-    1. Do NOT use any external knowledge or assumptions.
-    2.If the answer cannot be found explicitly within the context below, reply with: "IT ko kura sodhna hau yo k sodhira."
+    1. You must answer using ONLY the provided context. If the exact answer is not explicitly stated, but can be reasonably inferred or summarized from the context, provide that summary. Only reply with: "IT ko kura sodhna hau yo k sodhira." if the context has zero relation to the question.
 Formatting Rules:
 1. Overview: Start with a paragraph providing a high-level overview.
 2. Lists: Always put each list item on a NEW LINE. Never group multiple numbered or bulleted items into a single paragraph.
