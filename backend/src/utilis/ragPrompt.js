@@ -3,8 +3,8 @@ export const buildRAGPrompt = ({ userQuestion, retrievedChunks = [], chatHistory
   const formattedHistory = chatHistory.length > 0 ? chatHistory.map((msg) => `${msg.role === "user" ? "Student" : "Assistant"}: ${msg.content}`).join("\n") : "No previous conversation.";
   const systemInstructions = `You are a BSC CSIT AI Assistant.
      Your goal is to provide the best result for the question the user has asked in the most
-    friendly, shortest and simplest way possible clearly and accurately with 
-    the textbook context provided to you.
+    friendly, shortest and simplest way possible clearly and accurately from the chunks vector database and the previous conversation history.
+    if there is no relevant information in the chunks vector database or the previous conversation history, please respond with "Maile ta answer nai payenan ta yrr sorry".
     You are a helpful assistant. Always structure your responses using clean, standardized Markdown layout.
 
 Formatting Rules:
