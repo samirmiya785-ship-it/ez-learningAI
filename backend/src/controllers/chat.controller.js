@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { deleteChatHistory, getRecentHistory, saveMessages } from "../services/chatHistory.model.js";
-import { buildRAGPrompt } from "../utilis/ragPrompt.js";
+import { buildRAGPrompt, NO_CONTEXT_ANSWER } from "../utilis/ragPrompt.js";
 import { aimodel } from "../config/config.js";
 import { searchSimilarChunks } from "../services/VectorSearch.service.js";
 
@@ -41,26 +41,32 @@ export const handleQuery = async (req, res) => {
     failureStage = "retrieving relevant PDF chunks";
     const retrievedChunks = await searchSimilarChunks(normalizedQuery, 3);
 
-    failureStage = "building the AI prompt";
-    const { systemInstructions, userPrompt } = buildRAGPrompt({
-      userQuestion: normalizedQuery,
-      retrievedChunks,
-      chatHistory: recentHistory,
-    });
+    let aiAnswer;
+    if (retrievedChunks.length === 0) {
+      aiAnswer = NO_CONTEXT_ANSWER;
+    } else {
+      failureStage = "building the AI prompt";
+      const { systemInstructions, userPrompt } = buildRAGPrompt({
+        userQuestion: normalizedQuery,
+        retrievedChunks,
+        chatHistory: recentHistory,
+      });
 
-    failureStage = "generating the AI answer";
-    const response = await aimodel.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: userPrompt }],
-        },
-      ],
-      systemInstruction: systemInstructions,
-    });
-    const aiAnswer = response.response.text();
+      failureStage = "generating the AI answer";
+      const response = await aimodel.generateContent({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: userPrompt }],
+          },
+        ],
+        systemInstruction: systemInstructions,
+      });
+      aiAnswer = response.response.text();
+    }
+
     if (typeof aiAnswer !== "string" || !aiAnswer.trim()) {
-      throw new Error("The AI model returned an empty answer");
+      throw new Error("The chat answer was empty");
     }
 
     failureStage = "saving the conversation";

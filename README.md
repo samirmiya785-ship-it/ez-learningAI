@@ -1,6 +1,6 @@
 # ez-LearningAI
 
-ez-LearningAI is a Node.js and Express backend for a textbook-aware learning assistant. It accepts PDF uploads, extracts and splits their text, creates Google Gemini embeddings, stores the resulting chunks in MongoDB, and answers student questions using vector search, recent chat history, and a Gemini text-generation model. It also provides account registration and session-based refresh-token authentication.
+ez-LearningAI is a Node.js and Express backend for a textbook-aware learning assistant. It accepts PDF uploads, extracts and splits their text, creates Google Gemini embeddings, stores the resulting chunks in MongoDB, and answers student questions using vector search and a Gemini text-generation model. Recent chat history helps interpret follow-up questions but is not treated as factual evidence. It also provides account registration and session-based refresh-token authentication.
 
 This is my first RAG project, built to understand the RAG concept and create some stuff using LLM.
 
@@ -22,7 +22,7 @@ The application has three main request flows:
 
 1. **Account and sessions:** `server.js` starts Express after connecting to MongoDB. The authentication routes call the user controller, which creates users and manages login sessions and refresh tokens.
 2. **PDF ingestion:** a client sends a PDF to the upload route. The book controller extracts its text, splits it into overlapping chunks, embeds the chunks, then stores a book record and its chunks in MongoDB.
-3. **Textbook chat:** a client sends a session ID and question to the chat route. The chat controller loads recent messages, retrieves similar PDF chunks, builds a prompt, asks Gemini for an answer, saves both messages, and returns the answer and source metadata.
+3. **Textbook chat:** a client sends a session ID and question to the chat route. The chat controller loads recent messages, retrieves similar PDF chunks, and asks Gemini to answer only from the excerpts. If vector search returns no chunks, it returns the configured fallback without calling Gemini. Recent messages can clarify follow-ups but are not factual evidence.
 
 ```text
 server.js
@@ -216,7 +216,7 @@ Route modules map HTTP methods and paths to controller functions. They contain l
   - `logout` finds the session associated with the refresh token, marks it revoked, and clears the cookie.
   - `logoutAll` verifies the refresh token, revokes all active sessions for that user, and clears the cookie.
 - **`src/controllers/book.controller.js`** — Implements `uploadPDF`. It requires an uploaded file, extracts and splits PDF text, creates embeddings, verifies one embedding per chunk, creates the book record, saves the associated chunks, marks the book ready, and returns processing counts. Processing failures are logged and returned as HTTP 500 responses.
-- **`src/controllers/chat.controller.js`** — Implements `handleQuery`. It validates the session ID and question, loads recent chat history, retrieves similar chunks, builds the prompt, calls the configured Gemini text model, validates the answer, saves the user and assistant messages, and returns the answer and source metadata. On failure it logs the error; non-production responses include the failing stage and error message.
+- **`src/controllers/chat.controller.js`** — Implements `handleQuery`. It validates the session ID and question, loads recent chat history, retrieves similar chunks, and either returns the configured fallback when no chunks are found or calls Gemini with a prompt requiring answers grounded in the excerpts. It then saves the user and assistant messages and returns the answer and source metadata. On failure it logs the error; non-production responses include the failing stage and error message.
 
 ### Services and shared utilities
 
@@ -231,7 +231,7 @@ Route modules map HTTP methods and paths to controller functions. They contain l
   - `saveMessage(sessionId, role, content)` is a convenience wrapper that saves one message through `saveMessages`.
   - `getRecentHistory(sessionId, limit)` validates its arguments, fetches the session's chat record, and returns the last `limit` messages as role/content pairs. The default limit is ten; a session without saved messages returns an empty array.
 - **`src/services/storage.service.js`** — Creates an ImageKit client using `IMAGE_KIT_PRIVATE_KEY`. `uploadBook(files)` uploads the supplied files under the `Book-z/books` folder with a time-based filename and returns ImageKit's result. This helper is not currently called by the PDF upload controller.
-- **`src/utilis/ragPrompt.js`** — `buildRAGPrompt({ userQuestion, retrievedChunks, chatHistory })` formats retrieved excerpts and recent messages, creates system instructions for a concise BSc CSIT learning assistant, and returns `{ systemInstructions, userPrompt }`. Missing context or history is represented with a short fallback string.
+- **`src/utilis/ragPrompt.js`** — `buildRAGPrompt({ userQuestion, retrievedChunks, chatHistory })` formats retrieved excerpts and recent messages, creates system instructions requiring answers to be supported by excerpts (history is for context only), and returns `{ systemInstructions, userPrompt }`. `NO_CONTEXT_ANSWER` is the response used when no chunks are retrieved or the excerpts do not support an answer.
 
 ### MongoDB models
 
